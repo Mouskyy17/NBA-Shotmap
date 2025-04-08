@@ -10,7 +10,11 @@ st.title("NBA Shot Charts")
 st.subheader("Filter on any team and player to get their shot chart data")
 
 
-df = pd.read_csv("all_shots_df_2024-2025.csv")
+#df = pd.read_csv("all_shots_df_2024-2025.csv")
+df1 = pd.read_csv("all_shots_part1.csv")
+df2 = pd.read_csv("all_shots_part1.csv")
+
+df = pd.concat([df1, df2], ignore_index=True)
 
 # Convert inches to feet
 df["LOC_X"] = df["LOC_X"] / 12
