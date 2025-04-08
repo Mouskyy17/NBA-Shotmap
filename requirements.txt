@@ -1,0 +1,5 @@
+streamlit
+nba_api
+matplotlib
+mplbasketball
+pandas
