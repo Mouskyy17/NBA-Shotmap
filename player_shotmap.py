@@ -4,17 +4,26 @@ from nba_api.stats.static import players
 import matplotlib.pyplot as plt
 from mplbasketball import Court
 import pandas as pd
+import zipfile
 
 
 st.title("NBA Shot Charts")
 st.subheader("Filter on any team and player to get their shot chart data")
 
+# Chemin du fichier zip
+zip_file = 'all_shots_df_2024-2025.zip'
 
-#df = pd.read_csv("all_shots_df_2024-2025.csv")
-df1 = pd.read_csv("all_shots_part1.csv")
-df2 = pd.read_csv("all_shots_part1.csv")
+# Extraire le fichier zip
+with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+    # Liste des fichiers dans le zip
+    zip_ref.printdir()
+    
+    # Extraire le fichier CSV
+    zip_ref.extract('all_shots_df_2024-2025.csv', path='.')
 
-df = pd.concat([df1, df2], ignore_index=True)
+
+
+df = pd.read_csv("all_shots_df_2024-2025.csv")
 
 # Convert inches to feet
 df["LOC_X"] = df["LOC_X"] / 12
