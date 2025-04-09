@@ -36,7 +36,7 @@ def plot_shot_chart(df, player):
     plt.style.use("dark_background")
 
     # Création du terrain
-    court = Court(court_type="nba", origin="center", units="ft")
+    court = Court(court_type="nba", origin="center", units="ft", line_color="white")
     fig, ax = court.draw(orientation="vu")
 
     # Création de la heatmap avec hexbin
