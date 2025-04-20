@@ -30,7 +30,7 @@ df["LOC_X"] = -df["LOC_X"] * 1.2
 df["LOC_Y"] = -df["LOC_Y"] + 39
 
 team = st.selectbox("Select a team", df["TEAM_NAME"].unique())
-player = st.selectbox("Select a player", df[df["TEAM_NAME"] == team]["PLAYER_NAME"].unique(), index=None)
+players_selected = st.multiselect("Select up to 2 players", df[df["TEAM_NAME"] == team]["PLAYER_NAME"].unique(), max_selections=2)
 
 def calculate_hexbin_stats(data, gridsize=30):
     hb = plt.hexbin(
@@ -53,51 +53,43 @@ def calculate_hexbin_stats(data, gridsize=30):
     coords["fg_pct"] = [m/t if t > 0 else np.nan for m, t in zip(made, coords["total_shots"])]
     return coords
 
-def filter_data(df, team, player):
-    if team:
-        df_team = df[df["TEAM_NAME"] == team]
-    else:
-        df_team = df.copy()
+def plot_shot_chart(df_player, league_stats, player_name):
+    court = Court(court_type="nba", origin="center", units="ft")
+    fig, ax = court.draw(orientation="vu")
+    fig.patch.set_facecolor('black')
+    ax.set_facecolor("black")
 
-    if player:
+    player_stats = calculate_hexbin_stats(df_player)
+    merged = pd.merge(player_stats, league_stats, on=['x', 'y'], suffixes=('_player', '_league'))
+    merged["fg_diff"] = merged["fg_pct_player"] - merged["fg_pct_league"]
+
+    cmap = sns.color_palette("coolwarm", as_cmap=True)
+    sc = ax.scatter(
+        merged["x"], merged["y"],
+        s=merged["total_shots_player"] * 5,
+        c=merged["fg_diff"],
+        cmap=cmap,
+        vmin=-0.1, vmax=0.1,
+        edgecolors='none'
+    )
+
+    cbar = plt.colorbar(sc, ax=ax, shrink=0.7, pad=0.02)
+    cbar.set_label('FG% vs. League Avg', color='white')
+    cbar.ax.yaxis.set_tick_params(color='white')
+    plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+
+    ax.set_title(f"{player_name} Shot Chart vs League Avg", color="white", fontsize=14)
+    ax.tick_params(colors='white')
+
+    return fig
+
+if team and players_selected:
+    df_team = df[df["TEAM_NAME"] == team]
+    league_stats = calculate_hexbin_stats(df)
+
+    cols = st.columns(len(players_selected))
+    for i, player in enumerate(players_selected):
         df_player = df_team[df_team["PLAYER_NAME"] == player]
-        court = Court(court_type="nba", origin="center", units="ft")
-        fig, ax = court.draw(orientation="vu")
-
-        fig.patch.set_facecolor('black')
-        ax.set_facecolor("black")
-
-        # League FG% par hexagone
-        league_stats = calculate_hexbin_stats(df)
-
-        # FG% du joueur
-        player_stats = calculate_hexbin_stats(df_player)
-
-        # Merge
-        merged = pd.merge(player_stats, league_stats, on=['x', 'y'], suffixes=('_player', '_league'))
-        merged["fg_diff"] = merged["fg_pct_player"] - merged["fg_pct_league"]
-
-        # Plot
-        cmap = sns.color_palette("coolwarm", as_cmap=True)
-        sc = ax.scatter(
-            merged["x"], merged["y"],
-            s=merged["total_shots_player"] * 5,
-            c=merged["fg_diff"],
-            cmap=cmap,
-            vmin=-0.1, vmax=0.1,
-            edgecolors='none'
-        )
-
-        cbar = plt.colorbar(sc, ax=ax, shrink=0.7, pad=0.02)
-        cbar.set_label('FG% vs. League Avg', color='white')
-        cbar.ax.yaxis.set_tick_params(color='white')
-        plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
-
-        ax.set_title(f"{player} Shot Chart vs League Avg", color="white", fontsize=14)
-        ax.tick_params(colors='white')
-
-        st.pyplot(fig)
-
-    return df
-
-filtered_df = filter_data(df, team, player)
+        with cols[i]:
+            fig = plot_shot_chart(df_player, league_stats, player)
+            st.pyplot(fig)
