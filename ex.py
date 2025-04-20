@@ -1,95 +1,70 @@
-import streamlit as st
-from nba_api.stats.endpoints import shotchartdetail
-from nba_api.stats.static import players
 import matplotlib.pyplot as plt
-from mplbasketball import Court
+from nba_api.stats.static import players
+from nba_api.stats.endpoints import shotchartdetail
 import pandas as pd
-import zipfile
 import seaborn as sns
-import numpy as np
 
-st.set_page_config(layout="wide")
-st.title("NBA Shot Charts")
-st.subheader("Compare FG% vs League Average")
+# Fonction pour récupérer l'ID du joueur
+def get_player_id(player_name):
+    player_dict = players.find_players_by_full_name(player_name)
+    if player_dict:
+        return player_dict[0]['id']
+    else:
+        raise Exception(f"Joueur {player_name} introuvable")
 
-# Chemin du fichier zip
-zip_file = 'all_shots_df_2024-2025.zip'
-
-# Extraire le fichier zip
-with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-    zip_ref.extract('all_shots_df_2024-2025.csv', path='.')
-
-df = pd.read_csv("all_shots_df_2024-2025.csv")
-
-# Convert inches to feet
-df["LOC_X"] = df["LOC_X"] / 12
-df["LOC_Y"] = df["LOC_Y"] / 12
-
-# Flip the Y-axis to match the vertical "vu" court
-df["LOC_X"] = -df["LOC_X"] * 1.2
-df["LOC_Y"] = -df["LOC_Y"] + 39
-
-team = st.selectbox("Select a team", df["TEAM_NAME"].unique())
-players_selected = st.multiselect("Select up to 2 players", df[df["TEAM_NAME"] == team]["PLAYER_NAME"].unique(), max_selections=2)
-
-def calculate_hexbin_stats(data, gridsize=30):
-    hb = plt.hexbin(
-        data["LOC_X"], data["LOC_Y"],
-        gridsize=gridsize, extent=(-50, 50, -10, 60),
-        reduce_C_function=np.count_nonzero, mincnt=1
+# Fonction pour récupérer les tirs
+def get_shot_data(player_id, season='2023-24'):
+    shots = shotchartdetail.ShotChartDetail(
+        team_id=0,
+        player_id=player_id,
+        season_type_all_star='Regular Season',
+        season_nullable=season,
+        context_measure_simple='FGA'
     )
-    x, y = hb.get_offsets().T
-    coords = pd.DataFrame({"x": x, "y": y})
+    shot_df = shots.get_data_frames()[0]
+    return shot_df
 
-    coords["total_shots"] = hb.get_array()
-    made = []
-    for xi, yi in zip(x, y):
-        mask = (
-            (data["LOC_X"] >= xi - 1) & (data["LOC_X"] <= xi + 1) &
-            (data["LOC_Y"] >= yi - 1) & (data["LOC_Y"] <= yi + 1)
-        )
-        made.append(data.loc[mask, "SHOT_MADE_FLAG"].sum())
-    coords["fg_pct"] = coords["total_shots"].where(coords["total_shots"] > 0, np.nan)
-    coords["fg_pct"] = [m/t if t > 0 else np.nan for m, t in zip(made, coords["total_shots"])]
-    return coords
+# Fonction pour dessiner un demi-terrain NBA
+def draw_court(ax=None, color='white', lw=2, outer_lines=False):
+    if ax is None:
+        ax = plt.gca()
 
-def plot_shot_chart(df_player, league_stats, player_name):
-    court = Court(court_type="nba", origin="center", units="ft")
-    fig, ax = court.draw(orientation="vu")
-    fig.patch.set_facecolor('black')
-    ax.set_facecolor("black")
+    # Eléments du terrain
+    hoop = plt.Circle((0, 0), radius=7.5, linewidth=lw, color=color, fill=False)
+    backboard = plt.Rectangle((-30, -7.5), 60, -1, linewidth=lw, color=color)
+    paint = plt.Rectangle((-80, -47.5), 160, 190, linewidth=lw, color=color, fill=False)
+    free_throw = plt.Circle((0, 142.5), 60, linewidth=lw, color=color, fill=False)
+    restricted = plt.Circle((0, 0), 40, linewidth=lw, color=color, fill=False)
+    three_arc = plt.Arc((0, 0), 475, 475, theta1=22, theta2=158, linewidth=lw, color=color)
+    corner_three_left = plt.Rectangle((-220, -47.5), 0, 140, linewidth=lw, color=color)
+    corner_three_right = plt.Rectangle((220, -47.5), 0, 140, linewidth=lw, color=color)
 
-    player_stats = calculate_hexbin_stats(df_player)
-    merged = pd.merge(player_stats, league_stats, on=['x', 'y'], suffixes=('_player', '_league'))
-    merged["fg_diff"] = merged["fg_pct_player"] - merged["fg_pct_league"]
+    court_elements = [hoop, backboard, paint, free_throw, restricted,
+                      three_arc, corner_three_left, corner_three_right]
 
-    cmap = sns.color_palette("coolwarm", as_cmap=True)
-    sc = ax.scatter(
-        merged["x"], merged["y"],
-        s=merged["total_shots_player"] * 5,
-        c=merged["fg_diff"],
-        cmap=cmap,
-        vmin=-0.1, vmax=0.1,
-        edgecolors='none'
-    )
+    if outer_lines:
+        outer = plt.Rectangle((-250, -47.5), 500, 470, linewidth=lw, color=color, fill=False)
+        court_elements.append(outer)
 
-    cbar = plt.colorbar(sc, ax=ax, shrink=0.7, pad=0.02)
-    cbar.set_label('FG% vs. League Avg', color='white')
-    cbar.ax.yaxis.set_tick_params(color='white')
-    plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
+    for element in court_elements:
+        ax.add_patch(element)
 
-    ax.set_title(f"{player_name} Shot Chart vs League Avg", color="white", fontsize=14)
-    ax.tick_params(colors='white')
+    return ax
 
-    return fig
+# 🔧 Main
+player_name = "Stephen Curry"
+player_id = get_player_id(player_name)
+df_shots = get_shot_data(player_id)
 
-if team and players_selected:
-    df_team = df[df["TEAM_NAME"] == team]
-    league_stats = calculate_hexbin_stats(df)
-
-    cols = st.columns(len(players_selected))
-    for i, player in enumerate(players_selected):
-        df_player = df_team[df_team["PLAYER_NAME"] == player]
-        with cols[i]:
-            fig = plot_shot_chart(df_player, league_stats, player)
-            st.pyplot(fig)
+# 🎯 Affichage
+plt.figure(figsize=(12,11))
+plt.style.use('dark_background')
+ax = plt.gca()
+draw_court(ax, outer_lines=True)
+sns.scatterplot(data=df_shots, x='LOC_X', y='LOC_Y', hue='SHOT_MADE_FLAG', palette={1: 'green', 0: 'red'}, alpha=0.6)
+plt.xlim(-250, 250)
+plt.ylim(-47.5, 422.5)
+plt.title(f'{player_name} Shot Chart - {df_shots["SEASON"][0]} Season')
+plt.legend(title="Shot Made")
+plt.axis('off')
+plt.show()
