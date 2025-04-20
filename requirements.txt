@@ -3,3 +3,4 @@ nba_api
 matplotlib
 mplbasketball
 pandas
+seaborn 
